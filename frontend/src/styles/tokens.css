@@ -1,0 +1,60 @@
+/* Design tokens: every color, spacing, and type size used by the app lives here. */
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SFMono-Regular', ui-monospace, Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-pill: 999px;
+
+  --color-bg: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1f3f8;
+  --color-border: #e1e5ee;
+  --color-border-strong: #c9cfdc;
+  --color-text: #1b2333;
+  --color-text-muted: #5b6579;
+  --color-text-subtle: #8a93a6;
+  --color-primary: #3b5bdb;
+  --color-primary-hover: #2f4bc0;
+  --color-primary-soft: #e8edff;
+  --color-danger: #c92a2a;
+  --color-danger-soft: #fff0f0;
+  --color-success: #2b8a3e;
+  --color-warning: #b35c00;
+  --color-sidebar: #141a2a;
+  --color-sidebar-text: #c3c9d8;
+
+  /* Status badge colors (background / foreground). */
+  --status-draft-bg: #eef0f4;      --status-draft-fg: #4a5468;
+  --status-running-bg: #e6f0ff;    --status-running-fg: #1d4fbf;
+  --status-completed-bg: #e5f6ea;  --status-completed-fg: #1f7a35;
+  --status-archived-bg: #f4eee4;   --status-archived-fg: #7a5b26;
+  --status-failed-bg: #ffecec;     --status-failed-fg: #b02424;
+
+  /* Chart series colors, chosen to stay distinguishable side by side. */
+  --chart-1: #3b5bdb;
+  --chart-2: #0ca678;
+  --chart-3: #f08c00;
+  --chart-4: #ae3ec9;
+  --chart-5: #e03131;
+  --chart-6: #1098ad;
+
+  --shadow-sm: 0 1px 2px rgba(20, 26, 42, 0.06);
+  --shadow-md: 0 4px 16px rgba(20, 26, 42, 0.08);
+}
