@@ -9,6 +9,7 @@ from app.config import Config
 from app.errors import register_error_handlers
 from app.extensions import db, migrate
 from app.mongo import init_mongo
+from app import models  # noqa: F401  (registers models for Flask-Migrate)
 
 
 def configure_logging(level):
@@ -37,6 +38,10 @@ def create_app(config_class=Config):
 
     app.register_blueprint(api_v1)
     register_error_handlers(app)
+
+    from app.seed import register_commands
+
+    register_commands(app)
 
     request_logger = logging.getLogger("app.request")
 
