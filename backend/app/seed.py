@@ -1,17 +1,14 @@
-"""`flask seed`: load deterministic demo data.
+"""Deterministic demo data generation used by `flask seed` (see app/cli.py).
 
-Safety rules:
-  * refuses to run when APP_ENV=production;
-  * refuses to touch a database that already has researchers unless --reset is passed;
-  * --reset asks for confirmation (skip with --yes) before wiping demo tables.
+A fixed random seed means every machine gets the same experiments, runs and
+metrics; only dates shift so the data always looks recent.
 """
 import random
 from datetime import date, datetime, time, timedelta, timezone
 
-import click
-from flask import current_app
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 
+from app import run_details
 from app.extensions import db
 from app.models import Experiment, ExperimentResearcher, Researcher, Run
 from app.seed_data import EXPERIMENTS, RESEARCHERS, RUN_LABELS, STATUS_PLAN
@@ -24,12 +21,13 @@ def _email_for(name):
     return f"{local}@example.org"
 
 
-def _reset_postgres():
+def reset_demo_data():
     # Static SQL with no user input; RESTART IDENTITY makes IDs start at 1 again.
     db.session.execute(
         text("TRUNCATE runs, experiment_researchers, experiments, researchers RESTART IDENTITY CASCADE")
     )
     db.session.commit()
+    run_details.drop_all()
 
 
 def _seed_researchers():
@@ -92,9 +90,104 @@ def _plan_runs(rng, experiment, now):
                 "started_at": started_at,
                 "ended_at": ended_at,
                 "progress": index / max(count - 1, 1),
+                "index": index,
             }
         )
     return runs
+
+
+_BOUNDED_METRIC_HINTS = ("accuracy", "precision", "recall", "f1", "auroc", "rate", "exact_match", "iou",
+                         "rouge", "spearman", "silhouette", "r2", "index", "ece", "calibration", "p_value")
+
+
+def _metric_value(rng, name, first, best, decimals, progress):
+    # Fast early improvement that flattens out, plus noise proportional to the range.
+    curve = 1 - (1 - progress) ** 1.6
+    value = first + (best - first) * curve + rng.gauss(0, abs(best - first) * 0.06)
+    if any(hint in name for hint in _BOUNDED_METRIC_HINTS) and 0 <= min(first, best) and max(first, best) <= 1:
+        value = min(max(value, 0.0), 1.0)
+    if first >= 0 and best >= 0:
+        value = max(value, 0.0)
+    return round(value, decimals) if decimals else int(round(value))
+
+
+def _run_parameters(rng, spec, label, index):
+    params = dict(spec["params"])
+    params.update({
+        "learning_rate": rng.choice([1e-4, 3e-4, 5e-4, 1e-3, 3e-3]),
+        "batch_size": rng.choice([16, 32, 64, 128]),
+        "epochs": rng.choice([10, 20, 30, 50]),
+        "seed": 1000 + index,
+    })
+    if label == "lr-sweep":
+        params["learning_rate"] = rng.choice([1e-5, 5e-5, 1e-2])
+    elif label == "dropout-0.3":
+        params["dropout"] = 0.3
+    elif label == "warmup-cosine":
+        params["scheduler"] = "cosine"
+        params["warmup_steps"] = 500
+    elif label == "longer-schedule":
+        params["epochs"] = 100
+    return params
+
+
+_NOTES = {
+    "baseline": "Reference configuration. All later runs are compared against this one.",
+    "lr-sweep": "Learning-rate sweep point; watch for instability in early epochs.",
+    "wider-model": "Doubled hidden width to test whether capacity is the bottleneck.",
+    "longer-schedule": "Extended training schedule; checking whether validation metrics keep improving.",
+    "heavy-augmentation": "Stronger augmentation to reduce overfitting seen in earlier runs.",
+    "dropout-0.3": "Increased dropout after the train/validation gap widened.",
+    "warmup-cosine": "Linear warmup followed by cosine decay.",
+    "tuned-regularization": "Weight decay chosen from the previous sweep.",
+    "ensemble": "Average of the three best checkpoints so far.",
+    "final-candidate": "Candidate configuration for the write-up; re-run with a fresh seed to confirm.",
+}
+
+
+def _run_details(rng, spec, planned, sample_size):
+    label = planned["name"].split("-", 1)[1]
+    progress = planned["progress"]
+    started = planned["started_at"]
+    metrics = {}
+    if planned["status"] == "completed":
+        for name, first, best, decimals in spec["metrics"]:
+            metrics[name] = _metric_value(rng, name, first, best, decimals, progress)
+    elif planned["status"] == "running":
+        # Partial results reported so far.
+        name, first, best, decimals = spec["metrics"][-1] if spec["metrics"][-1][0] == "loss" else spec["metrics"][0]
+        metrics[name] = _metric_value(rng, name, first, best, decimals, progress * 0.6)
+    else:  # failed
+        loss_spec = next((m for m in spec["metrics"] if m[0] == "loss"), None)
+        if loss_spec:
+            metrics["loss"] = _metric_value(rng, *loss_spec, progress=0.0)
+    metrics["sample_size"] = int(sample_size * rng.uniform(0.9, 1.1)) if planned["status"] != "failed" else 0
+    if planned["ended_at"]:
+        metrics["duration_seconds"] = round((planned["ended_at"] - started).total_seconds(), 1)
+
+    params = _run_parameters(rng, spec, label, planned["index"])
+    logs = [
+        {"timestamp": started, "level": "info", "message": f"Run started with seed {params['seed']}."},
+        {"timestamp": started + timedelta(minutes=2), "level": "info",
+         "message": f"Loaded {metrics['sample_size'] or sample_size:,} samples."},
+    ]
+    if planned["status"] == "failed":
+        logs.append({"timestamp": planned["ended_at"], "level": "error",
+                     "message": rng.choice(["CUDA out of memory at batch 412.", "Loss became NaN at step 1,830.",
+                                            "Data loader worker exited unexpectedly."])})
+    elif planned["status"] == "running":
+        logs.append({"timestamp": started + timedelta(minutes=10), "level": "info",
+                     "message": f"Epoch 1/{params['epochs']} finished."})
+    else:
+        if rng.random() < 0.3:
+            logs.append({"timestamp": started + timedelta(minutes=15), "level": "warning",
+                         "message": "Validation loss plateaued for 3 epochs; reducing learning rate."})
+        logs.append({"timestamp": planned["ended_at"], "level": "info",
+                     "message": "Run completed; final checkpoint saved."})
+    notes = _NOTES.get(label, "")
+    if planned["status"] == "failed":
+        notes = "Failed run kept for reference. " + notes
+    return {"parameters": params, "metrics": metrics, "logs": logs, "notes": notes}
 
 
 def seed_database(today=None, now=None):
@@ -111,7 +204,7 @@ def seed_database(today=None, now=None):
     statuses = STATUS_PLAN[:]
     rng.shuffle(statuses)
 
-    run_total = 0
+    details_by_run = []
     for spec, status in zip(EXPERIMENTS, statuses):
         team = by_team[spec["team"]]
         owner = rng.choice(team)
@@ -135,43 +228,24 @@ def seed_database(today=None, now=None):
         db.session.add(experiment)
         db.session.flush()
 
+        sample_size = rng.choice([4_800, 12_000, 25_000, 60_000, 150_000])
         for planned in _plan_runs(rng, experiment, now):
-            db.session.add(
-                Run(
-                    experiment_id=experiment.id,
-                    name=planned["name"],
-                    status=planned["status"],
-                    started_at=planned["started_at"],
-                    ended_at=planned["ended_at"],
-                )
+            run = Run(
+                experiment_id=experiment.id,
+                name=planned["name"],
+                status=planned["status"],
+                started_at=planned["started_at"],
+                ended_at=planned["ended_at"],
             )
-            run_total += 1
+            db.session.add(run)
+            details_by_run.append((run, _run_details(rng, spec, planned, sample_size)))
 
     db.session.commit()
-    return {"researchers": len(researchers), "experiments": len(EXPERIMENTS), "runs": run_total}
-
-
-def register_commands(app):
-    @app.cli.command("seed")
-    @click.option("--reset", is_flag=True, help="Delete existing demo data before seeding.")
-    @click.option("--yes", is_flag=True, help="Do not ask for confirmation when using --reset.")
-    def seed_command(reset, yes):
-        """Seed the databases with fictional demo data."""
-        if current_app.config["APP_ENV"] == "production":
-            raise click.ClickException("Refusing to seed when APP_ENV=production.")
-
-        existing = db.session.scalar(select(func.count(Researcher.id)))
-        if existing and not reset:
-            raise click.ClickException(
-                f"Database already contains {existing} researchers. Re-run with --reset to replace the demo data."
-            )
-        if reset:
-            if not yes:
-                click.confirm("This deletes ALL researchers, experiments and runs. Continue?", abort=True)
-            _reset_postgres()
-
-        counts = seed_database()
-        click.echo(
-            f"Seeded {counts['researchers']} researchers, {counts['experiments']} experiments, "
-            f"and {counts['runs']} runs."
-        )
+    try:
+        for run, details in details_by_run:
+            run_details.create(run.id, details)
+    except run_details.DetailsStoreError:
+        # Keep the databases consistent: without details, remove the seeded rows too.
+        reset_demo_data()
+        raise
+    return {"researchers": len(researchers), "experiments": len(EXPERIMENTS), "runs": len(details_by_run)}

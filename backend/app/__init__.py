@@ -39,7 +39,7 @@ def create_app(config_class=Config):
     app.register_blueprint(api_v1)
     register_error_handlers(app)
 
-    from app.seed import register_commands
+    from app.cli import register_commands
 
     register_commands(app)
 
