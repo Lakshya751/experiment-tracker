@@ -61,6 +61,9 @@ export default function RunDetailPage() {
               </dl>
             </section>
 
+            {/* Without MongoDB we don't know the details, so don't claim they are empty. */}
+            {data.details_status !== 'unavailable' && (
+            <>
             <div className="grid-2">
               <section className="card">
                 <h2 className="card-title">Metrics</h2>
@@ -97,6 +100,8 @@ export default function RunDetailPage() {
                 </ol>
               )}
             </section>
+            </>
+            )}
           </div>
         );
       }}
