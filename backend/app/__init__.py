@@ -1,6 +1,7 @@
 """Flask application factory."""
 import logging
 import time
+from pathlib import Path
 
 from flask import Flask, request
 from flask_cors import CORS
@@ -29,7 +30,8 @@ def create_app(config_class=Config):
     app.json.sort_keys = False
 
     db.init_app(app)
-    migrate.init_app(app, db)
+    # Absolute path so `flask db` and the tests work from any working directory.
+    migrate.init_app(app, db, directory=str(Path(__file__).resolve().parent.parent / "migrations"))
     init_mongo(app)
     # Only the API is exposed cross-origin, and only to the configured dev origins.
     CORS(app, resources={r"/api/*": {"origins": app.config["CORS_ORIGINS"]}})
