@@ -41,7 +41,7 @@ def metric_comparison():
     """Latest and best value of one metric for each selected experiment.
 
     Query params:
-      experiment_ids=1,2,3  (default: up to 6 recently active experiments that report the metric)
+      experiment_ids=1,2,3  (default: up to 6 experiments with the most completed runs that report the metric)
       metric=accuracy       (default: accuracy)
     Only completed runs are considered.
     """
@@ -60,7 +60,8 @@ def metric_comparison():
     else:
         candidate_ids = list(db.session.scalars(
             select(Run.experiment_id).where(Run.status == "completed").group_by(Run.experiment_id)
-            .order_by(func.max(Run.ended_at).desc()).limit(CANDIDATE_POOL)
+            .order_by(func.count(Run.id).desc(), func.max(Run.ended_at).desc(), Run.experiment_id)
+            .limit(CANDIDATE_POOL)
         ))
 
     runs = db.session.scalars(

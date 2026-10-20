@@ -47,13 +47,9 @@
   --status-archived-bg: #f4eee4;   --status-archived-fg: #7a5b26;
   --status-failed-bg: #ffecec;     --status-failed-fg: #b02424;
 
-  /* Chart series colors, chosen to stay distinguishable side by side. */
-  --chart-1: #3b5bdb;
-  --chart-2: #0ca678;
-  --chart-3: #f08c00;
-  --chart-4: #ae3ec9;
-  --chart-5: #e03131;
-  --chart-6: #1098ad;
+  /* Chart series colors (validated for colorblind separation; use in this order). */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
 
   --shadow-sm: 0 1px 2px rgba(20, 26, 42, 0.06);
   --shadow-md: 0 4px 16px rgba(20, 26, 42, 0.08);

@@ -103,7 +103,7 @@ _BOUNDED_METRIC_HINTS = ("accuracy", "precision", "recall", "f1", "auroc", "rate
 def _metric_value(rng, name, first, best, decimals, progress):
     # Fast early improvement that flattens out, plus noise proportional to the range.
     curve = 1 - (1 - progress) ** 1.6
-    value = first + (best - first) * curve + rng.gauss(0, abs(best - first) * 0.06)
+    value = first + (best - first) * curve + rng.gauss(0, abs(best - first) * 0.08)
     if any(hint in name for hint in _BOUNDED_METRIC_HINTS) and 0 <= min(first, best) and max(first, best) <= 1:
         value = min(max(value, 0.0), 1.0)
     if first >= 0 and best >= 0:
@@ -147,7 +147,8 @@ _NOTES = {
 
 def _run_details(rng, spec, planned, sample_size):
     label = planned["name"].split("-", 1)[1]
-    progress = planned["progress"]
+    # Later runs tend to do better, but not always: some changes regress.
+    progress = min(1.0, max(0.0, 0.2 + 0.6 * planned["progress"] + rng.uniform(-0.3, 0.3)))
     started = planned["started_at"]
     metrics = {}
     if planned["status"] == "completed":
